@@ -48,6 +48,10 @@ const MCP_SESSION_ID: &str = "mcp-session-id";
 /// Set by x402 on a response that actually settled. Used to count real spends.
 const PAYMENT_RESPONSE: &str = "x-payment-response";
 
+/// Carries the base64 x402 challenge on a 402. The body of a 402 is empty, so
+/// this header is the only place the reason for refusal appears.
+const PAYMENT_REQUIRED: &str = "payment-required";
+
 #[derive(Parser, Debug)]
 #[command(
     name = "x402-mcp-proxy",
@@ -234,9 +238,23 @@ async fn forward(
     }
 
     let status = response.status();
+    // An unsatisfied 402 carries its detail in this header, never in the body,
+    // so it has to be read before the response is consumed.
+    let challenge = response
+        .headers()
+        .get(PAYMENT_REQUIRED)
+        .and_then(|v| v.to_str().ok())
+        .map(decode_challenge);
+
     let body = response.text().await.context("read upstream body")?;
 
     if body.trim().is_empty() {
+        if let Some(detail) = challenge {
+            // Reaching here means x402 could not satisfy the challenge —
+            // typically an unfunded payer or an expired quote. Reporting
+            // "empty body" would bury the actual reason.
+            anyhow::bail!("payment required and not completed: {detail}");
+        }
         if !status.is_success() {
             anyhow::bail!("upstream returned {status} with an empty body");
         }
@@ -244,6 +262,48 @@ async fn forward(
     }
 
     Ok(Some(unwrap_sse(&body)))
+}
+
+/// Renders a base64 x402 challenge as something a human can act on.
+///
+/// Falls back to the raw header when it can't be decoded — a truncated blob is
+/// still better than discarding the only diagnostic the server sent.
+fn decode_challenge(raw: &str) -> String {
+    use base64::Engine;
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(raw) else {
+        return format!("<undecodable challenge: {}>", truncate(raw, 80));
+    };
+    let Ok(text) = String::from_utf8(bytes) else {
+        return "<challenge was not valid UTF-8>".to_owned();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return truncate(&text, 300);
+    };
+
+    // Surface the fields that identify *why* a payment didn't go through.
+    let err = json.get("error").and_then(|v| v.as_str()).unwrap_or("-");
+    let first = json
+        .get("accepts")
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first());
+    match first {
+        Some(a) => format!(
+            "{err} (want {} of {} on {}, to {})",
+            a.get("amount").and_then(|v| v.as_str()).unwrap_or("?"),
+            a.get("asset").and_then(|v| v.as_str()).unwrap_or("?"),
+            a.get("network").and_then(|v| v.as_str()).unwrap_or("?"),
+            a.get("payTo").and_then(|v| v.as_str()).unwrap_or("?"),
+        ),
+        None => err.to_owned(),
+    }
+}
+
+fn truncate(s: &str, n: usize) -> String {
+    if s.len() <= n {
+        s.to_owned()
+    } else {
+        format!("{}…", &s[..n])
+    }
 }
 
 /// Extracts JSON from an SSE frame, leaving plain JSON untouched.
@@ -359,5 +419,46 @@ mod tests {
     #[test]
     fn a_zero_cap_refuses_before_any_payment() {
         assert!(Budget::new(0).exhausted());
+    }
+
+    /// Captured verbatim from a live v2 challenge (devnet, $0.20 USDC). The
+    /// body of a 402 is empty, so this header is the whole diagnostic.
+    const REAL_CHALLENGE: &str = "eyJ4NDAyVmVyc2lvbiI6MiwiZXJyb3IiOiJQYXltZW50LVNpZ25hdHVyZSBoZWFkZXIgaXMgcmVxdWlyZWQiLCJyZXNvdXJjZSI6eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjgwODAvIn0sImFjY2VwdHMiOlt7InNjaGVtZSI6ImV4YWN0IiwibmV0d29yayI6InNvbGFuYTpFdFdUUkFCWmFZcTZpTWZlWUtvdVJ1MTY2VlUyeHFhMSIsImFtb3VudCI6IjIwMDAwMCIsInBheVRvIjoiN2JWa3RvUVJVYmRiWnhnb2VwcmdEdm1qQThrcm8zNUZMWkZIQjJ4ZDdjVlUiLCJtYXhUaW1lb3V0U2Vjb25kcyI6MzAwLCJhc3NldCI6IjR6TU1DOXNydDVSaTVYMTRHQWdYaGFIaWkzR25QQUVFUllQSmdaSkRuY0RVIiwiZXh0cmEiOnsiZmVlUGF5ZXIiOiJDN2NrRXpINHZhck1wQlFzYUQ5YkpaU0NuV1Z5azR6QUtZQTg1c3B1dU5iUiJ9fV19";
+
+    #[test]
+    fn a_real_challenge_reports_why_and_what_was_wanted() {
+        let out = decode_challenge(REAL_CHALLENGE);
+        assert!(
+            out.contains("Payment-Signature header is required"),
+            "{out}"
+        );
+        assert!(out.contains("200000"), "{out}");
+        assert!(
+            out.contains("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"),
+            "{out}"
+        );
+        assert!(
+            out.contains("7bVktoQRUbdbZxgoeprgDvmjA8kro35FLZFHB2xd7cVU"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn an_undecodable_challenge_still_says_something() {
+        let out = decode_challenge("!!!not base64!!!");
+        assert!(out.contains("undecodable"), "{out}");
+    }
+
+    #[test]
+    fn valid_base64_that_is_not_json_falls_back_to_text() {
+        use base64::Engine;
+        let raw = base64::engine::general_purpose::STANDARD.encode("plain refusal text");
+        assert_eq!(decode_challenge(&raw), "plain refusal text");
+    }
+
+    #[test]
+    fn truncate_marks_where_it_cut() {
+        assert_eq!(truncate("abcdef", 3), "abc…");
+        assert_eq!(truncate("ab", 8), "ab");
     }
 }
