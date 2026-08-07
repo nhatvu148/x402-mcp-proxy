@@ -8,3 +8,6 @@ id.json
 
 # stderr captures from manual runs
 *.err
+
+# Machine-specific: absolute paths, and it names where the wallet lives.
+.mcp.json
