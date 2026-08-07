@@ -46,7 +46,13 @@ use x402_reqwest::{ReqwestWithPayments, ReqwestWithPaymentsBuild, X402Client};
 const MCP_SESSION_ID: &str = "mcp-session-id";
 
 /// Set by x402 on a response that actually settled. Used to count real spends.
-const PAYMENT_RESPONSE: &str = "x-payment-response";
+///
+/// The name has no `x-` prefix — see `x402-axum/src/paygate.rs:559`, which
+/// inserts `Payment-Response`. Guessing `x-payment-response` (by analogy with
+/// the *request* header `X-PAYMENT`) made the spend cap silently inert: every
+/// settlement went uncounted, so `--max-payments` never stopped anything.
+/// Lowercase because `HeaderMap` normalises names on lookup.
+const PAYMENT_RESPONSE: &str = "payment-response";
 
 /// Carries the base64 x402 challenge on a 402. The body of a 402 is empty, so
 /// this header is the only place the reason for refusal appears.
