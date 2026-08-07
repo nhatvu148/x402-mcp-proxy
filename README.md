@@ -35,6 +35,16 @@ is handled by [`x402-reqwest`](https://crates.io/crates/x402-reqwest). What this
 crate adds is the plumbing MCP needs — session-id propagation, SSE unwrapping —
 and a spend cap.
 
+## Protocol version
+
+**x402 v2** (`V2SolanaExactClient`), which identifies networks by CAIP-2 chain
+id rather than v1's `"solana-devnet"` name.
+
+All three parties must agree on the version: the upstream server's price tag,
+this client, and the facilitator's `schemes` entry (`"v2-solana-exact"`). A
+mismatch shows up as the client declining to pay a challenge it doesn't
+recognise, not as a clear error.
+
 ## Install
 
 ```bash

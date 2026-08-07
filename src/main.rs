@@ -39,7 +39,7 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_keypair::{Keypair, read_keypair_file};
 use solana_signer::Signer;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use x402_chain_solana::V1SolanaExactClient;
+use x402_chain_solana::V2SolanaExactClient;
 use x402_reqwest::{ReqwestWithPayments, ReqwestWithPaymentsBuild, X402Client};
 
 /// Header the MCP streamable-HTTP transport uses to bind requests to a session.
@@ -133,7 +133,11 @@ async fn main() -> Result<()> {
     let signer = Arc::new(keypair);
     let rpc = Arc::new(RpcClient::new(args.rpc.clone()));
 
-    let x402 = X402Client::new().register(V1SolanaExactClient::new(signer, rpc));
+    // x402 v2 — identifies networks by CAIP-2 chain id rather than v1's
+    // `"solana-devnet"` name. Server, client and facilitator must all agree on
+    // the version, so this moves in lockstep with the upstream server's
+    // `V2SolanaExact::price_tag` and the facilitator's `v2-solana-exact` scheme.
+    let x402 = X402Client::new().register(V2SolanaExactClient::new(signer, rpc));
     let http = reqwest::Client::new().with_payments(x402).build();
 
     let budget = Budget::new(args.max_payments);
