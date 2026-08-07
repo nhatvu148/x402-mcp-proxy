@@ -1,1 +1,10 @@
 /target
+
+# Never commit a wallet. This crate's whole job is holding one, and the
+# natural thing to do is `solana-keygen new -o payer.json` right here.
+payer.json
+*.keypair.json
+id.json
+
+# stderr captures from manual runs
+*.err

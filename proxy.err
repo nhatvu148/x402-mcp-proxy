@@ -1,5 +1,0 @@
-x402-mcp-proxy → http://127.0.0.1:8080/mcp
-  payer: CpLGxiKTeoQY3oQteX5rowRRHuzr2SWhp3DEuN4bo3u2
-  rpc:   https://api.devnet.solana.com
-  cap:   0 payments
-stdin closed; 0 payment(s) settled
