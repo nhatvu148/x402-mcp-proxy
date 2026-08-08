@@ -11,7 +11,10 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-PORT=${PORT:-8899}
+# Ask the OS for a free port rather than hardcoding one — 8899 (the old
+# default) is Solana's RPC port and collided with a stray process on the very
+# first run.
+PORT=${PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')}
 KEYPAIR=${KEYPAIR:-payer.json}
 USDC=${USDC_MINT:-4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU}
 PAY_TO=${X402_PAY_TO:-7bVktoQRUbdbZxgoeprgDvmjA8kro35FLZFHB2xd7cVU}

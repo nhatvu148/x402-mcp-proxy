@@ -16,7 +16,7 @@
 //!
 //! Run:
 //!   X402_PAY_TO=<your-solana-address> cargo run -p coinflip-server
-//!   # then point the proxy at http://127.0.0.1:8899/mcp
+//!   # then point the proxy at http://127.0.0.1:8921/mcp
 use std::task::{Context, Poll};
 
 use axum::body::Body;
@@ -38,7 +38,10 @@ async fn main() {
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(8899);
+        // NOT 8899: that is Solana's default RPC port, so a local validator or
+        // a stray earlier run collides with it — which is exactly what
+        // happened the first time this was demoed.
+        .unwrap_or(8921);
 
     // The MCP handler, twice: once plain, once behind the payment layer.
     let free = tower::service_fn(handle);

@@ -27,10 +27,10 @@ Or by hand, in two terminals:
 ```bash
 # terminal 1
 X402_PAY_TO=<your-solana-address> cargo run -p coinflip-server
-# → coinflip MCP server on http://127.0.0.1:8899/mcp
+# → coinflip MCP server on http://127.0.0.1:8921/mcp
 
 # terminal 2 — needs a funded devnet payer at ./payer.json
-cargo run --bin x402-mcp-proxy -- --url http://127.0.0.1:8899/mcp \
+cargo run --bin x402-mcp-proxy -- --url http://127.0.0.1:8921/mcp \
   --keypair payer.json --max-payments 1
 ```
 
@@ -40,7 +40,7 @@ for:
 ```bash
 claude mcp add -s local coinflip -- \
   "$PWD/target/debug/x402-mcp-proxy" \
-  --url http://127.0.0.1:8899/mcp \
+  --url http://127.0.0.1:8921/mcp \
   --keypair "$PWD/payer.json" --max-payments 2
 ```
 
