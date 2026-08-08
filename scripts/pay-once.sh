@@ -4,8 +4,14 @@
 # The JSON-RPC lines are long enough that pasting them into a terminal
 # reliably corrupts them, so they are written to a file and redirected in.
 #
-#   scripts/pay-once.sh                      # bogus URL — should NOT settle
-#   scripts/pay-once.sh <video-url>          # real work  — should settle
+#   scripts/pay-once.sh                      # bogus URL — settles, then refunds a credit
+#   scripts/pay-once.sh <video-url>          # real work  — settles, delivers a transcript
+#
+# Both settle. Payment happens BEFORE execution, because a Solana blockhash
+# dies after ~60-90s and settling afterwards silently lost every job longer
+# than that. A failed job is therefore already charged, and the server records
+# a compensation credit against `wallet:<payer>` instead of withholding
+# payment. Check whisgram/api/credits.json (or Postgres) to see it.
 #
 # Requires the upstream server to already be running.
 set -euo pipefail
@@ -51,7 +57,9 @@ AFTER=$(balance)
 echo "USDC after:  $AFTER"
 
 if [ "$BEFORE" = "$AFTER" ]; then
-  echo "RESULT: nothing settled — correct if the tool call failed"
+  echo "RESULT: nothing settled — payment was refused, not just the work"
 else
   echo "RESULT: settled, $BEFORE -> $AFTER"
+  echo "        (if the tool call FAILED, a compensation credit was recorded —"
+  echo "         see credits.json / Postgres. Settling is expected either way.)"
 fi
