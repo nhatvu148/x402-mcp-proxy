@@ -1,3 +1,8 @@
+# The example server is a workspace member so `cargo run -p coinflip-server`
+# works from the repo root and both crates share one target dir and lockfile.
+[workspace]
+members = [".", "examples/coinflip-server"]
+
 [package]
 name = "x402-mcp-proxy"
 version = "0.1.0"
