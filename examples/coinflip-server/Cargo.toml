@@ -1,0 +1,18 @@
+[package]
+name = "coinflip-server"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "A tiny x402-gated MCP server, unrelated to any other project — proof the proxy is generic"
+
+[dependencies]
+axum = "0.8.9"
+serde_json = "1.0"
+tokio = { version = "1.53", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.7", features = ["map-response-body"] }
+uuid = { version = "1.24", features = ["v4"] }
+
+x402-axum = "2.0.2"
+x402-types = "2.0.2"
+x402-chain-solana = { version = "2.0.2", features = ["server"] }
