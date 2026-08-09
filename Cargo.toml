@@ -16,7 +16,7 @@ keywords = ["mcp", "x402", "solana", "usdc", "agent"]
 categories = ["command-line-utilities", "web-programming"]
 # The example server is its own workspace member and is not part of this
 # package; keep the published tarball to the proxy itself.
-exclude = ["examples/", "scripts/claude-test-prompts.txt"]
+exclude = ["examples/"]
 
 [dependencies]
 anyhow = "1.0.104"

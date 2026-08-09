@@ -19,3 +19,6 @@ id.json
 # on-chain, but no reason to tie them to this repo's history.
 .env
 .env.local
+
+# Personal walkthrough notes — kept locally, deliberately not tracked.
+scripts/claude-test-prompts.txt
