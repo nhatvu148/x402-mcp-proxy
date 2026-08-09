@@ -7,6 +7,16 @@ members = [".", "examples/coinflip-server"]
 name = "x402-mcp-proxy"
 version = "0.1.0"
 edition = "2024"
+description = "stdio MCP proxy that pays x402-gated MCP servers with USDC on Solana, so an agent can buy a tool call without holding a wallet"
+license = "MIT"
+repository = "https://github.com/nhatvu148/x402-mcp-proxy"
+homepage = "https://github.com/nhatvu148/x402-mcp-proxy"
+readme = "README.md"
+keywords = ["mcp", "x402", "solana", "usdc", "agent"]
+categories = ["command-line-utilities", "web-programming"]
+# The example server is its own workspace member and is not part of this
+# package; keep the published tarball to the proxy itself.
+exclude = ["examples/", "scripts/claude-test-prompts.txt"]
 
 [dependencies]
 anyhow = "1.0.104"

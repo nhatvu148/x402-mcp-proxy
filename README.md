@@ -48,8 +48,10 @@ recognise, not as a clear error.
 ## Install
 
 ```bash
-cargo install --path .
+cargo install x402-mcp-proxy
 ```
+
+Or from a clone: `cargo install --path .`
 
 ## Usage
 
@@ -60,6 +62,18 @@ solana-keygen new --derivation-path -o payer.json
 solana address -k payer.json
 # fund at https://faucet.circle.com → "Solana Devnet"
 ```
+
+`--derivation-path` matters. Without it the key comes from the raw seed and the
+phrase only recovers with the `ASK` keyword; with it you get the standard
+`m/44'/501'/0'/0'` that Phantom, Solflare and Ledger use, recoverable with
+`'prompt://?key=0/0'`. Pairing the wrong one silently yields a different,
+valid-looking, empty address.
+
+**Mainnet** is the same flow with two changes: fund with real USDC
+(`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`), and set
+`X402_PROXY_RPC=https://api.mainnet-beta.solana.com`. It defaults to devnet,
+and paying a mainnet challenge against a devnet RPC fails in a way that looks
+like a broken server rather than a misconfigured client.
 
 Register with Claude Code:
 
