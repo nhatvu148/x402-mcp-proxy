@@ -1,5 +1,9 @@
 # x402-mcp-proxy
 
+[![crates.io](https://img.shields.io/crates/v/x402-mcp-proxy.svg)](https://crates.io/crates/x402-mcp-proxy)
+[![downloads](https://img.shields.io/crates/d/x402-mcp-proxy.svg)](https://crates.io/crates/x402-mcp-proxy)
+[![License: MIT](https://img.shields.io/crates/l/x402-mcp-proxy.svg)](#license)
+
 Lets an MCP client that has no wallet use an **x402-gated MCP server**.
 
 ```
@@ -119,10 +123,18 @@ portable. **Verify recovery reproduces the address before funding the wallet.**
 
 ## Status
 
-Early. The forwarding, session handling, SSE unwrapping and spend cap are
-implemented and unit-tested. Not yet exercised against a live facilitator with
-a funded wallet — see the upstream server's handoff notes for the end-to-end
-settlement test.
+Early, but proven end to end. Verified on **Solana mainnet** with real USDC
+against a self-hosted facilitator: payer `1.498953 → 1.298953`, merchant
+`0 → 0.20`, settlement fee `0.000010001 SOL` (~0.38% of the $0.20 price).
+
+Also verified on devnet against a second, unrelated server
+(`examples/coinflip-server`) to show the proxy isn't coupled to the one it was
+written for.
+
+One caveat worth knowing before you point this at mainnet: the public
+`facilitator.x402.rs` settles **testnets only** — its `/supported` has no entry
+for `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`. Mainnet needs a facilitator that
+does, self-hosted or otherwise.
 
 ## License
 
