@@ -5,10 +5,10 @@ members = [".", "examples/coinflip-server"]
 
 [package]
 name = "x402-mcp-proxy"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "stdio MCP proxy that pays x402-gated MCP servers with USDC on Solana, so an agent can buy a tool call without holding a wallet"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/nhatvu148/x402-mcp-proxy"
 homepage = "https://github.com/nhatvu148/x402-mcp-proxy"
 readme = "README.md"

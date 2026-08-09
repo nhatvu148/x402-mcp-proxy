@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/x402-mcp-proxy.svg)](https://crates.io/crates/x402-mcp-proxy)
 [![downloads](https://img.shields.io/crates/d/x402-mcp-proxy.svg)](https://crates.io/crates/x402-mcp-proxy)
-[![License: MIT](https://img.shields.io/crates/l/x402-mcp-proxy.svg)](#license)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/x402-mcp-proxy.svg)](#license)
 
 Lets an MCP client that has no wallet use an **x402-gated MCP server**.
 
@@ -138,4 +138,15 @@ does, self-hosted or otherwise.
 
 ## License
 
-MIT
+Licensed under either of
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option.
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
