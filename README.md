@@ -1,8 +1,9 @@
 # x402-mcp-proxy
 
 [![crates.io](https://img.shields.io/crates/v/x402-mcp-proxy.svg)](https://crates.io/crates/x402-mcp-proxy)
-[![downloads](https://img.shields.io/crates/d/x402-mcp-proxy.svg)](https://crates.io/crates/x402-mcp-proxy)
 [![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/x402-mcp-proxy.svg)](#license)
+[![x402 v2](https://img.shields.io/badge/x402-v2-blue)](#protocol-version)
+[![Solana mainnet](https://img.shields.io/badge/Solana-mainnet-14F195)](#status)
 
 Lets an MCP client that has no wallet use an **x402-gated MCP server**.
 
