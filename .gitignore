@@ -1,4 +1,7 @@
-/target
+# `target/` not `/target` — the leading slash anchors to the repo root, which
+# is why examples/coinflip-server/target/ was never ignored: 2760 build
+# artifacts got committed and .git reached 216 MB.
+target/
 
 # Never commit a wallet. This crate's whole job is holding one, and the
 # natural thing to do is `solana-keygen new -o payer.json` right here.
