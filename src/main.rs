@@ -61,6 +61,9 @@ const PAYMENT_REQUIRED: &str = "payment-required";
 #[derive(Parser, Debug)]
 #[command(
     name = "x402-mcp-proxy",
+    // Packaging (Homebrew, distro formulae) checks `--version` to prove the
+    // installed binary actually runs; without this clap rejects the flag.
+    version,
     about = "Pay-per-call bridge between a walletless MCP client and an x402-gated MCP server"
 )]
 struct Args {

@@ -5,7 +5,7 @@ members = [".", "examples/coinflip-server"]
 
 [package]
 name = "x402-mcp-proxy"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "stdio MCP proxy that pays x402-gated MCP servers with USDC on Solana, so an agent can buy a tool call without holding a wallet"
 license = "MIT"
