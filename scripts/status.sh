@@ -70,6 +70,16 @@ PY
 )
 EOF
   rm -f "$CHALF"
+
+  # The live challenge is authoritative about which mint is in play, so trust
+  # it over the USDC_MINT default. Without this, pointing the script at a
+  # mainnet deployment looks up DEVNET-mint accounts and reports "no token
+  # account" for wallets that are perfectly fine — a scary false alarm on the
+  # one run where you most want to trust the output.
+  if [ -n "${ASSET:-}" ] && [ "$ASSET" != "?" ]; then
+    USDC="$ASSET"
+  fi
+
   echo
   bold "CHALLENGE (live 402)"
   row "x402 version" "${XVER:-?}"

@@ -1,0 +1,80 @@
+version: '3'
+
+# Per-machine overrides (gitignored). CLUSTER, KEYPAIR, MCP_URL, USDC_MINT.
+dotenv: ['.env', '.env.local']
+
+vars:
+  BINARY: ./target/debug/x402-mcp-proxy
+  COINFLIP_PORT: '8921'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # ------------------------------------------------------------ build
+  build:
+    desc: Build the proxy (debug) — what .mcp.json points at
+    cmds:
+      - cargo build
+    sources:
+      - src/**/*.rs
+      - Cargo.toml
+    generates:
+      - '{{.BINARY}}'
+
+  build:release:
+    desc: Build optimized
+    cmds:
+      - cargo build --release
+
+  check:
+    desc: Type-check the whole workspace without building
+    cmds:
+      - cargo check --workspace --all-targets
+
+  fmt:
+    desc: Format
+    cmds:
+      - cargo fmt --all
+
+  lint:
+    desc: Clippy, warnings as errors
+    cmds:
+      - cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    desc: Run tests
+    cmds:
+      - cargo test --workspace
+
+  verify:
+    desc: fmt check + lint + test — run before pushing
+    cmds:
+      - cargo fmt --all -- --check
+      - task: lint
+      - task: test
+
+  # -------------------------------------------------------------- x402
+  status:
+    desc: Live x402 state — server, 402 challenge, payer, payTo, feePayer
+    cmds:
+      - ./scripts/status.sh
+
+  pay:
+    desc: 'One real paid MCP call. Usage: task pay -- <video-url>'
+    deps: [build]
+    cmds:
+      - ./scripts/pay-once.sh {{.CLI_ARGS}}
+
+  coinflip:
+    desc: Run the example x402 server (proves the proxy is generic)
+    cmds:
+      - cargo run -p coinflip-server
+
+  demo:
+    desc: End-to-end coinflip demo — server, paid call, balance delta
+    cmds:
+      - ./scripts/demo-coinflip.sh

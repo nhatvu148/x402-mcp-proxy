@@ -11,3 +11,8 @@ id.json
 
 # Machine-specific: absolute paths, and it names where the wallet lives.
 .mcp.json
+
+# Loaded by Taskfile's `dotenv`. Holds personal wallet addresses — public
+# on-chain, but no reason to tie them to this repo's history.
+.env
+.env.local
