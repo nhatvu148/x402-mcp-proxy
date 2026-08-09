@@ -20,8 +20,30 @@ URL=${MCP_URL:-http://127.0.0.1:8080/mcp}
 KEYPAIR=${KEYPAIR:-payer.json}
 MAX=${MAX_PAYMENTS:-1}
 VIDEO=${1:-https://example.com/does-not-exist.mp4}
-USDC=${USDC_MINT:-4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU}
 CLUSTER=${CLUSTER:-devnet}
+
+# CLUSTER has to drive the proxy too, not just the balance readout. The proxy
+# defaults to X402_PROXY_RPC=api.devnet.solana.com, so `CLUSTER=mainnet-beta`
+# alone used to leave it fetching devnet blockhashes and devnet accounts while
+# paying a mainnet challenge — which fails in a way that looks like a broken
+# facilitator rather than a misconfigured client.
+# USDC mints are cluster-specific too, so the default follows the cluster.
+case "$CLUSTER" in
+  mainnet-beta|mainnet)
+    RPC_URL=https://api.mainnet-beta.solana.com
+    DEFAULT_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+    ;;
+  devnet)
+    RPC_URL=https://api.devnet.solana.com
+    DEFAULT_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+    ;;
+  *)  # a full RPC URL — caller must name the mint
+    RPC_URL=$CLUSTER
+    DEFAULT_MINT=${USDC_MINT:?set USDC_MINT when CLUSTER is a raw RPC URL}
+    ;;
+esac
+USDC=${USDC_MINT:-$DEFAULT_MINT}
+export X402_PROXY_RPC=${X402_PROXY_RPC:-$RPC_URL}
 
 cd "$(dirname "$0")/.."
 
@@ -44,6 +66,8 @@ trap 'rm -f "$REQ"' EXIT
 } > "$REQ"
 
 echo "payer:   $PAYER"
+echo "cluster: $CLUSTER  (rpc $X402_PROXY_RPC)"
+echo "mint:    $USDC"
 echo "video:   $VIDEO"
 BEFORE=$(balance)
 echo "USDC before: $BEFORE"
