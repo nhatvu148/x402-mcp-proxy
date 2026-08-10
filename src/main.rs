@@ -227,13 +227,20 @@ async fn forward(
         headers.insert(HeaderName::from_static(MCP_SESSION_ID), id.clone());
     }
 
+    // Name the RPC in the error. Payment signing reads the mint account from
+    // whichever cluster this points at, so pointing it at the wrong one fails
+    // deep inside the x402 layer with something like "failed to unpack mint
+    // <mainnet USDC>: unknown owner" — because that address also exists on
+    // devnet, as an ordinary wallet rather than a mint. Without the RPC in the
+    // message that error reads like a broken server instead of a misconfigured
+    // client.
     let response = http
         .post(&args.url)
         .headers(headers)
         .body(line.to_owned())
         .send()
         .await
-        .context("POST upstream")?;
+        .with_context(|| format!("POST upstream (proxy rpc: {})", args.rpc))?;
 
     // The server issues a session id on initialize; every later request must
     // carry it or it is treated as a new, unknown session.
