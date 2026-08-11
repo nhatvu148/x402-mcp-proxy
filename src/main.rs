@@ -30,6 +30,7 @@
 use std::io::IsTerminal;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -94,6 +95,32 @@ struct Args {
     /// disables paying entirely — useful to confirm which calls are free.
     #[arg(long, env = "X402_PROXY_MAX_PAYMENTS", default_value_t = 10)]
     max_payments: usize,
+
+    /// Give up on an upstream call after this many seconds.
+    ///
+    /// `reqwest` has NO default request timeout, so without this a stalled
+    /// connection waits forever and the MCP client sees a tool that never
+    /// answers. That is not hypothetical: on 2026-08-11 a `transcribe_video`
+    /// hung for 30 minutes and was killed by the harness, having settled
+    /// nothing and logged nothing.
+    ///
+    /// The default is deliberately generous rather than snappy. This proxy
+    /// fronts long synchronous work — a transcription runs for minutes and the
+    /// response arrives in one piece at the end, so no bytes flow in between
+    /// and anything aggressive would kill healthy calls. 15 minutes sits above
+    /// the upstream's own ceiling, making this a backstop against a wedged
+    /// connection, not a policy on how long work may take.
+    #[arg(long, env = "X402_PROXY_TIMEOUT_SECS", default_value_t = 900)]
+    timeout_secs: u64,
+
+    /// Give up on a Solana RPC call after this many seconds.
+    ///
+    /// Separate from `timeout_secs` because these are different animals: RPC
+    /// calls are small and fast, and a public endpoint that has started
+    /// rate-limiting should fail quickly so the caller learns why, rather than
+    /// stalling a payment behind it.
+    #[arg(long, env = "X402_PROXY_RPC_TIMEOUT_SECS", default_value_t = 30)]
+    rpc_timeout_secs: u64,
 }
 
 /// Counts settled payments and stops the proxy once the cap is reached.
@@ -145,14 +172,38 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("read keypair {}: {e}", args.keypair))?;
     let payer = keypair.pubkey().to_string();
     let signer = Arc::new(keypair);
-    let rpc = Arc::new(RpcClient::new(args.rpc.clone()));
+    let rpc = Arc::new(RpcClient::new_with_timeout(
+        args.rpc.clone(),
+        Duration::from_secs(args.rpc_timeout_secs),
+    ));
+    // The public endpoints are rate-limited and are the most likely thing here
+    // to stall under load. Say so once at startup rather than leaving a slow
+    // payment looking like a broken one.
+    if args.rpc.contains("api.mainnet-beta.solana.com")
+        || args.rpc.contains("api.devnet.solana.com")
+    {
+        eprintln!(
+            "  note:  {} is a public rate-limited RPC; payments may be slow or \
+             fail under load. Set X402_PROXY_RPC to a dedicated endpoint.",
+            args.rpc
+        );
+    }
 
     // x402 v2 — identifies networks by CAIP-2 chain id rather than v1's
     // `"solana-devnet"` name. Server, client and facilitator must all agree on
     // the version, so this moves in lockstep with the upstream server's
     // `V2SolanaExact::price_tag` and the facilitator's `v2-solana-exact` scheme.
     let x402 = X402Client::new().register(V2SolanaExactClient::new(signer, rpc));
-    let http = reqwest::Client::new().with_payments(x402).build();
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(args.timeout_secs))
+        // Short and separate: a connection that cannot be established is a
+        // different failure from work that is taking a while, and should not
+        // wait out the generous request timeout to say so.
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .context("build HTTP client")?
+        .with_payments(x402)
+        .build();
 
     let budget = Budget::new(args.max_payments);
 
