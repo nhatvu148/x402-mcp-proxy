@@ -22,3 +22,6 @@ id.json
 
 # Personal walkthrough notes — kept locally, deliberately not tracked.
 scripts/claude-test-prompts.txt
+
+# Where the transcriber writes when this proxy is exercised against it by hand.
+archive/

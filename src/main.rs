@@ -39,6 +39,7 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_keypair::{Keypair, read_keypair_file};
 use solana_signer::Signer;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::Mutex;
 use x402_chain_solana::V2SolanaExactClient;
 use x402_reqwest::{ReqwestWithPayments, ReqwestWithPaymentsBuild, X402Client};
 
@@ -160,15 +161,31 @@ async fn main() -> Result<()> {
         args.url, payer, args.rpc, args.max_payments
     );
 
-    pump(&http, &args, &budget).await
+    pump(http, Arc::new(args), Arc::new(budget)).await
 }
 
 /// Reads newline-delimited JSON-RPC from stdin, forwards each message, writes
 /// replies to stdout.
-async fn pump(http: &ClientWithMiddleware, args: &Args, budget: &Budget) -> Result<()> {
+///
+/// Each message is forwarded on its own task. The first version awaited every
+/// forward before reading the next line, which meant one slow call blocked the
+/// whole pipe: a transcription running for minutes would stall the free
+/// `get_latest_transcript` queued behind it, and both would look like the
+/// server had hung. It made three unrelated production failures present
+/// identically, and hid a fourth entirely.
+///
+/// JSON-RPC carries an `id` on every request, so replies may return in any
+/// order — the client matches them up. Notifications have no id and no reply.
+async fn pump(http: ClientWithMiddleware, args: Arc<Args>, budget: Arc<Budget>) -> Result<()> {
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
-    let mut stdout = tokio::io::stdout();
-    let mut session: Option<HeaderValue> = None;
+    // One writer, shared: two tasks writing at once would interleave bytes
+    // mid-line and produce JSON no client can parse.
+    let stdout = Arc::new(Mutex::new(tokio::io::stdout()));
+    // Set by whichever request establishes the session (initialize) and read by
+    // every request after. MCP clients wait for the initialize reply before
+    // sending anything else, so this is written once before it is read.
+    let session: Arc<Mutex<Option<HeaderValue>>> = Arc::new(Mutex::new(None));
+    let mut tasks = tokio::task::JoinSet::new();
 
     while let Some(line) = lines.next_line().await.context("read stdin")? {
         if line.trim().is_empty() {
@@ -178,33 +195,71 @@ async fn pump(http: &ClientWithMiddleware, args: &Args, budget: &Budget) -> Resu
         // Refuse locally once the cap is hit, so a runaway agent stops at the
         // proxy instead of at the wallet.
         if budget.exhausted() && is_paid_call(&line) {
-            if let Some(reply) = budget_error(&line, budget) {
-                write_line(&mut stdout, &reply).await?;
+            if let Some(reply) = budget_error(&line, &budget) {
+                write_line(&stdout, &reply).await?;
             }
             continue;
         }
 
-        match forward(http, args, &line, &mut session, budget).await {
-            Ok(Some(reply)) => write_line(&mut stdout, &reply).await?,
-            // Notifications get no reply; upstream returned 202 with no body.
-            Ok(None) => {}
-            Err(e) => {
-                eprintln!("forward failed: {e:#}");
-                if let Some(reply) = transport_error(&line, &e) {
-                    write_line(&mut stdout, &reply).await?;
-                }
-            }
+        // `initialize` establishes the session every later request needs, so it
+        // is the one message that must complete before the next is sent.
+        // Everything else runs concurrently.
+        if is_initialize(&line) {
+            deliver(&http, &args, &line, &session, &budget, &stdout).await;
+            continue;
         }
+
+        let http = http.clone();
+        let args = args.clone();
+        let budget = budget.clone();
+        let session = session.clone();
+        let stdout = stdout.clone();
+        tasks.spawn(async move {
+            deliver(&http, &args, &line, &session, &budget, &stdout).await;
+        });
     }
+
+    // stdin closing does not mean the work is done. Dropping the JoinSet here
+    // would abort a transcription the client already paid for.
+    while tasks.join_next().await.is_some() {}
 
     eprintln!("stdin closed; {} payment(s) settled", budget.spent());
     Ok(())
 }
 
-async fn write_line(stdout: &mut tokio::io::Stdout, s: &str) -> Result<()> {
-    stdout.write_all(s.as_bytes()).await?;
-    stdout.write_all(b"\n").await?;
-    stdout.flush().await?;
+/// Forward one message and write whatever comes back.
+///
+/// Shared by the serialized `initialize` path and the concurrent one, so both
+/// handle replies, notifications and transport errors identically.
+async fn deliver(
+    http: &ClientWithMiddleware,
+    args: &Args,
+    line: &str,
+    session: &Mutex<Option<HeaderValue>>,
+    budget: &Budget,
+    stdout: &Mutex<tokio::io::Stdout>,
+) {
+    match forward(http, args, line, session, budget).await {
+        Ok(Some(reply)) => {
+            let _ = write_line(stdout, &reply).await;
+        }
+        // Notifications get no reply; upstream returned 202 with no body.
+        Ok(None) => {}
+        Err(e) => {
+            eprintln!("forward failed: {e:#}");
+            if let Some(reply) = transport_error(line, &e) {
+                let _ = write_line(stdout, &reply).await;
+            }
+        }
+    }
+}
+
+async fn write_line(stdout: &Mutex<tokio::io::Stdout>, s: &str) -> Result<()> {
+    // Held across all three writes so a concurrent reply cannot land mid-line.
+    let mut out = stdout.lock().await;
+    out.write_all(s.as_bytes()).await?;
+    out.write_all(b"\n").await?;
+    out.flush().await?;
     Ok(())
 }
 
@@ -213,7 +268,7 @@ async fn forward(
     http: &ClientWithMiddleware,
     args: &Args,
     line: &str,
-    session: &mut Option<HeaderValue>,
+    session: &Mutex<Option<HeaderValue>>,
     budget: &Budget,
 ) -> Result<Option<String>> {
     let mut headers = HeaderMap::new();
@@ -223,7 +278,7 @@ async fn forward(
         ACCEPT,
         HeaderValue::from_static("application/json, text/event-stream"),
     );
-    if let Some(id) = session.as_ref() {
+    if let Some(id) = session.lock().await.as_ref() {
         headers.insert(HeaderName::from_static(MCP_SESSION_ID), id.clone());
     }
 
@@ -245,7 +300,7 @@ async fn forward(
     // The server issues a session id on initialize; every later request must
     // carry it or it is treated as a new, unknown session.
     if let Some(id) = response.headers().get(MCP_SESSION_ID) {
-        *session = Some(id.clone());
+        *session.lock().await = Some(id.clone());
     }
 
     if response.headers().contains_key(PAYMENT_RESPONSE) {
@@ -339,6 +394,20 @@ fn unwrap_sse(body: &str) -> String {
     } else {
         data.join("")
     }
+}
+
+/// `initialize` is the one message that cannot be concurrent.
+///
+/// It is what mints the session id every later request must carry, so anything
+/// sent alongside it would go out session-less and be refused. Clients happen
+/// to wait for the reply before sending more, but a proxy must not depend on
+/// the client being polite — feeding a pipelined script through it did exactly
+/// this and only `initialize` came back.
+fn is_initialize(line: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(line)
+        .ok()
+        .and_then(|v| v.get("method")?.as_str().map(|m| m == "initialize"))
+        .unwrap_or(false)
 }
 
 /// True when the message is a `tools/call`, i.e. the only thing that can cost

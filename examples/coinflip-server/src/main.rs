@@ -50,21 +50,19 @@ async fn main() {
     // `None` needs a concrete type, and the payment layer's is unnameable, so
     // the paid arm is boxed. Costs one allocation per request on a path that
     // already does a network round trip to a facilitator.
-    type Paid = tower::util::BoxCloneSyncService<
-        Request<Body>,
-        Response,
-        std::convert::Infallible,
-    >;
+    type Paid = tower::util::BoxCloneSyncService<Request<Body>, Response, std::convert::Infallible>;
 
     let app = if pay_to.trim().is_empty() {
         eprintln!("X402_PAY_TO unset — running free, nothing will be charged");
         axum::Router::new().fallback_service(McpRouter {
-            free: free.clone(),
+            free,
             paid: None::<Paid>,
         })
     } else {
-        let addr: x402_chain_solana::chain::Address =
-            pay_to.trim().parse().expect("X402_PAY_TO is not a Solana address");
+        let addr: x402_chain_solana::chain::Address = pay_to
+            .trim()
+            .parse()
+            .expect("X402_PAY_TO is not a Solana address");
         let usdc = USDC::solana_devnet();
         let amount = usdc.parse(PRICE_USD).expect("price");
 
@@ -77,11 +75,10 @@ async fn main() {
             .settle_before_execution()
             .with_price_tag(V2SolanaExact::price_tag(addr, amount));
 
-        let paid: Paid = tower::util::BoxCloneSyncService::new(
-            tower::Layer::layer(&layer, paid_inner),
-        );
+        let paid: Paid =
+            tower::util::BoxCloneSyncService::new(tower::Layer::layer(&layer, paid_inner));
         axum::Router::new().fallback_service(McpRouter {
-            free: free.clone(),
+            free,
             paid: Some(paid),
         })
     };
@@ -208,15 +205,25 @@ async fn handle(request: Request<Body>) -> Result<Response, std::convert::Infall
                 "flip_coin" => {
                     // uuid rather than rand: one fewer dependency, and the low
                     // bit of a v4 is as fair as this demo needs.
-                    let heads = uuid::Uuid::new_v4().as_bytes()[0] % 2 == 0;
+                    let heads = uuid::Uuid::new_v4().as_bytes()[0].is_multiple_of(2);
                     tool_text(if heads { "heads 🪙" } else { "tails 🪙" })
                 }
                 other => {
-                    return Ok(json_rpc_error(id, -32601, &format!("unknown tool: {other}")));
+                    return Ok(json_rpc_error(
+                        id,
+                        -32601,
+                        &format!("unknown tool: {other}"),
+                    ));
                 }
             }
         }
-        other => return Ok(json_rpc_error(id, -32601, &format!("unknown method: {other}"))),
+        other => {
+            return Ok(json_rpc_error(
+                id,
+                -32601,
+                &format!("unknown method: {other}"),
+            ));
+        }
     };
 
     let mut response = axum::Json(serde_json::json!({
