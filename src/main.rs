@@ -383,6 +383,27 @@ async fn forward(
         return Ok(None);
     }
 
+    // A non-success status is a failure whether or not it came with a body, and
+    // the body it comes with is not JSON-RPC.
+    //
+    // On 2026-09-02 the server restarted mid-session, so the next call carried
+    // a session id that no longer existed and came back
+    // `404 Not Found: Session not found` in milliseconds. That went down the
+    // path below, which handed the plain-text body back as though it were a
+    // result. The caller had asked for `transcribe_video` with id 2, received
+    // something that was not a response to anything, and sat waiting for ten
+    // minutes — while the paid call it was waiting on had already failed, and
+    // the credit for it had already been spent.
+    //
+    // The empty-body branch above got this right and this one did not, which is
+    // the whole bug: emptiness was never what made it a failure. The status is.
+    if !status.is_success() {
+        if let Some(detail) = challenge {
+            anyhow::bail!("payment required and not completed: {detail}");
+        }
+        anyhow::bail!("upstream returned {status}: {}", truncate(body.trim(), 200));
+    }
+
     Ok(Some(unwrap_sse(&body)))
 }
 
