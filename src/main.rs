@@ -383,6 +383,27 @@ async fn forward(
         return Ok(None);
     }
 
+    // A non-success status is a failure whether or not it came with a body, and
+    // the body it comes with is not JSON-RPC.
+    //
+    // On 2026-09-02 the server restarted mid-session, so the next call carried
+    // a session id that no longer existed and came back
+    // `404 Not Found: Session not found` in milliseconds. That went down the
+    // path below, which handed the plain-text body back as though it were a
+    // result. The caller had asked for `transcribe_video` with id 2, received
+    // something that was not a response to anything, and sat waiting for ten
+    // minutes — while the paid call it was waiting on had already failed, and
+    // the credit for it had already been spent.
+    //
+    // The empty-body branch above got this right and this one did not, which is
+    // the whole bug: emptiness was never what made it a failure. The status is.
+    if !status.is_success() {
+        if let Some(detail) = challenge {
+            anyhow::bail!("payment required and not completed: {detail}");
+        }
+        anyhow::bail!("upstream returned {status}: {}", truncate(body.trim(), 200));
+    }
+
     Ok(Some(unwrap_sse(&body)))
 }
 
@@ -422,10 +443,17 @@ fn decode_challenge(raw: &str) -> String {
 
 fn truncate(s: &str, n: usize) -> String {
     if s.len() <= n {
-        s.to_owned()
-    } else {
-        format!("{}…", &s[..n])
+        return s.to_owned();
     }
+    // Walk back to a char boundary. `&s[..n]` panics when byte n lands inside a
+    // multi-byte character, and every caller feeds this untrusted text — an
+    // upstream error body, a base64 challenge that failed to decode. Truncating
+    // a diagnostic must never be the thing that kills the proxy.
+    let mut end = n;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &s[..end])
 }
 
 /// Extracts JSON from an SSE frame, leaving plain JSON untouched.
@@ -596,5 +624,24 @@ mod tests {
     fn truncate_marks_where_it_cut() {
         assert_eq!(truncate("abcdef", 3), "abc…");
         assert_eq!(truncate("ab", 8), "ab");
+    }
+
+    /// `&s[..n]` panics when n lands inside a multi-byte character, and every
+    /// caller feeds this untrusted text — an upstream error body, an
+    /// undecodable challenge. Truncating a diagnostic must not be the thing
+    /// that kills the proxy.
+    #[test]
+    fn truncate_never_splits_a_multibyte_char() {
+        // "é" is 2 bytes, so byte 3 is mid-character.
+        assert_eq!(truncate("aéb", 3), "aé…");
+        // Every cut point of a 3-byte character, from either side.
+        for n in 1..=4 {
+            let _ = truncate("日本語", n);
+        }
+        // A realistic upstream body: non-ASCII right at the cut.
+        let body = "upstream error: ürgh ".repeat(40);
+        let out = truncate(&body, 200);
+        assert!(out.ends_with('…'));
+        assert!(out.len() <= 203, "should not grow past the cut plus the mark");
     }
 }
