@@ -5,7 +5,7 @@ members = [".", "examples/coinflip-server"]
 
 [package]
 name = "x402-mcp-proxy"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 description = "stdio MCP proxy that pays x402-gated MCP servers with USDC on Solana, so an agent can buy a tool call without holding a wallet"
 license = "MIT OR Apache-2.0"
@@ -16,7 +16,11 @@ keywords = ["mcp", "x402", "solana", "usdc", "agent"]
 categories = ["command-line-utilities", "web-programming"]
 # The example server is its own workspace member and is not part of this
 # package; keep the published tarball to the proxy itself.
-exclude = ["examples/"]
+# HANDOFF.md is internal working notes and .DS_Store is Finder junk; neither
+# belongs in a published artifact just because git tracks it. crates.io versions
+# are immutable — yankable, never deletable — so this list is the only chance to
+# leave something out.
+exclude = ["examples/", "HANDOFF.md", ".DS_Store"]
 
 [dependencies]
 anyhow = "1.0.104"

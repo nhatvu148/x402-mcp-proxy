@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-09-03
+
+### Fixed
+
+- **A non-success upstream status is now an error, not a result.** The
+  empty-body branch already refused a bad status; the non-empty one handed the
+  body straight back as though it were a JSON-RPC response. Emptiness was never
+  what made a response a failure — the status is — and that asymmetry is the
+  whole bug.
+
+  On 2026-09-02 the upstream restarted mid-session, so the next call carried a
+  session id that no longer existed and came back `404 Not Found: Session not
+  found` in milliseconds. That plain text went back to the client as the payload
+  for a `transcribe_video` request, carrying no `id` to match against, so the
+  caller sat waiting ten minutes for a response it had already been given in a
+  form it could not recognise. Meanwhile the paid call had failed and the credit
+  for it was already spent.
+
+  This is the second hang of this shape — 0.1.5 fixed one where nothing came
+  back at all. The lesson repeated: from the client's side, a malformed answer
+  and no answer are the same thing, and only a well-formed error ends the wait.
+
+- **`truncate` no longer panics on multi-byte text.** It sliced with `&s[..n]`,
+  which panics when byte `n` lands inside a character, and every caller feeds it
+  untrusted input — an upstream error body, an undecodable challenge. The fix
+  above added a new call site on exactly that path, so a server returning a
+  non-ASCII error would have crashed the proxy rather than reporting it.
+  Confirmed against the old implementation: `end byte index 1 is not a char
+  boundary; it is inside '日'`.
+
 ## [0.1.5] - 2026-08-12
 
 ### Fixed
