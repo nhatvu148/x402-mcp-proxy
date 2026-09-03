@@ -443,10 +443,17 @@ fn decode_challenge(raw: &str) -> String {
 
 fn truncate(s: &str, n: usize) -> String {
     if s.len() <= n {
-        s.to_owned()
-    } else {
-        format!("{}…", &s[..n])
+        return s.to_owned();
     }
+    // Walk back to a char boundary. `&s[..n]` panics when byte n lands inside a
+    // multi-byte character, and every caller feeds this untrusted text — an
+    // upstream error body, a base64 challenge that failed to decode. Truncating
+    // a diagnostic must never be the thing that kills the proxy.
+    let mut end = n;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &s[..end])
 }
 
 /// Extracts JSON from an SSE frame, leaving plain JSON untouched.
@@ -617,5 +624,24 @@ mod tests {
     fn truncate_marks_where_it_cut() {
         assert_eq!(truncate("abcdef", 3), "abc…");
         assert_eq!(truncate("ab", 8), "ab");
+    }
+
+    /// `&s[..n]` panics when n lands inside a multi-byte character, and every
+    /// caller feeds this untrusted text — an upstream error body, an
+    /// undecodable challenge. Truncating a diagnostic must not be the thing
+    /// that kills the proxy.
+    #[test]
+    fn truncate_never_splits_a_multibyte_char() {
+        // "é" is 2 bytes, so byte 3 is mid-character.
+        assert_eq!(truncate("aéb", 3), "aé…");
+        // Every cut point of a 3-byte character, from either side.
+        for n in 1..=4 {
+            let _ = truncate("日本語", n);
+        }
+        // A realistic upstream body: non-ASCII right at the cut.
+        let body = "upstream error: ürgh ".repeat(40);
+        let out = truncate(&body, 200);
+        assert!(out.ends_with('…'));
+        assert!(out.len() <= 203, "should not grow past the cut plus the mark");
     }
 }
